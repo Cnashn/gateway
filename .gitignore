@@ -1,0 +1,4 @@
+bin/
+.DS_Store
+graphify-out/
+go-gateway-build-plan.md

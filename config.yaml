@@ -1,0 +1,25 @@
+listen: ":8080"
+redis_url: "redis://redis:6379"
+
+upstreams:
+  - name: orders
+    url: "http://orders:8081"
+  - name: users
+    url: "http://users:8082"
+
+routes:
+  - path_prefix: /api/orders/
+    upstream: orders
+    rate_limit:
+      requests_per_second: 5
+      burst: 10
+  - path_prefix: /api/users/
+    upstream: users
+    rate_limit:
+      requests_per_second: 10
+      burst: 20
+
+breaker:
+  failure_threshold: 0.5
+  open_duration: 30s
+  half_open_max_requests: 3

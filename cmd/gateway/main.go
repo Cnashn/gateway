@@ -1,0 +1,65 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/cnashn/gateway/internal/config"
+)
+
+func main() {
+	configPath := flag.String("config", "config.yaml", "path to config file")
+	flag.Parse()
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		logger.Error("failed to load config", "error", err)
+		os.Exit(1)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	server := &http.Server{
+		Addr:    cfg.Listen,
+		Handler: mux,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		logger.Info("gateway listening", "addr", cfg.Listen)
+		errCh <- server.ListenAndServe()
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-errCh:
+		logger.Error("server failed", "error", err)
+		os.Exit(1)
+	case sig := <-stop:
+		logger.Info("shutting down", "signal", sig.String())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		logger.Error("graceful shutdown failed", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("shutdown complete")
+}
