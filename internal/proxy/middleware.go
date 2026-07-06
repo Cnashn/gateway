@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cnashn/gateway/internal/breaker"
+	"github.com/cnashn/gateway/internal/observability"
 	"github.com/cnashn/gateway/internal/ratelimit"
 )
 
@@ -105,7 +106,10 @@ func Logging(logger *slog.Logger, route, upstream string) Middleware {
 // while Redis is down. That is the right default for availability-focused
 // routing; for quota billing or auth throttling, failing closed would be the
 // safer choice.
-func RateLimit(limiter ratelimit.Limiter, route string, logger *slog.Logger, onFailOpen func()) Middleware {
+func RateLimit(limiter ratelimit.Limiter, route string, logger *slog.Logger, onDecision func(decision string)) Middleware {
+	if onDecision == nil {
+		onDecision = func(string) {}
+	}
 	return func(next http.Handler) http.Handler {
 		if limiter == nil {
 			return next
@@ -121,9 +125,7 @@ func RateLimit(limiter ratelimit.Limiter, route string, logger *slog.Logger, onF
 					"error", err,
 					"request_id", r.Header.Get("X-Request-Id"),
 				)
-				if onFailOpen != nil {
-					onFailOpen()
-				}
+				onDecision("failopen")
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -132,14 +134,50 @@ func RateLimit(limiter ratelimit.Limiter, route string, logger *slog.Logger, onF
 			w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(d.Remaining))
 
 			if !d.Allowed {
+				onDecision("denied")
 				w.Header().Set("Retry-After", strconv.Itoa(ceilSeconds(d.RetryAfter)))
 				writeJSONError(w, http.StatusTooManyRequests, "rate_limited", r.Header.Get("X-Request-Id"))
 				return
 			}
 
+			onDecision("allowed")
 			w.Header().Set("X-RateLimit-Reset", strconv.Itoa(ceilSeconds(d.ResetAfter)))
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// Metrics records request count, duration and in-flight gauge. It sits right
+// after request-id so denied (429/503) responses are counted too.
+func Metrics(m *observability.Metrics, route, upstream string) Middleware {
+	return func(next http.Handler) http.Handler {
+		if m == nil {
+			return next
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			m.InflightRequests.Inc()
+			defer m.InflightRequests.Dec()
+
+			start := time.Now()
+			rec := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
+			next.ServeHTTP(rec, r)
+
+			m.RequestsTotal.WithLabelValues(route, upstream, statusClass(rec.status)).Inc()
+			m.RequestDuration.WithLabelValues(route, upstream).Observe(time.Since(start).Seconds())
+		})
+	}
+}
+
+func statusClass(status int) string {
+	switch {
+	case status >= 500:
+		return "5xx"
+	case status >= 400:
+		return "4xx"
+	case status >= 300:
+		return "3xx"
+	default:
+		return "2xx"
 	}
 }
 

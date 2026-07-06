@@ -1,4 +1,5 @@
 listen: ":8080"
+metrics_listen: ":9091"
 redis_url: "redis://redis:6379"
 
 upstreams:

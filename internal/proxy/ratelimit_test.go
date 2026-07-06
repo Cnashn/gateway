@@ -28,10 +28,10 @@ func (f *fakeLimiter) Allow(_ context.Context, route, key string) (ratelimit.Dec
 	return f.decision, f.err
 }
 
-func serveRateLimited(t *testing.T, limiter ratelimit.Limiter, onFailOpen func(), headers map[string]string) (*httptest.ResponseRecorder, bool) {
+func serveRateLimited(t *testing.T, limiter ratelimit.Limiter, onDecision func(string), headers map[string]string) (*httptest.ResponseRecorder, bool) {
 	t.Helper()
 	handlerCalled := false
-	h := proxy.RateLimit(limiter, "/api/orders/", discardLogger(), onFailOpen)(
+	h := proxy.RateLimit(limiter, "/api/orders/", discardLogger(), onDecision)(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			handlerCalled = true
 			w.WriteHeader(http.StatusOK)
@@ -109,9 +109,9 @@ func TestRateLimitDeniedReturns429(t *testing.T) {
 
 func TestRateLimitErrorFailsOpen(t *testing.T) {
 	limiter := &fakeLimiter{err: errors.New("redis: connection refused")}
-	failOpens := 0
+	var decisions []string
 
-	rec, handlerCalled := serveRateLimited(t, limiter, func() { failOpens++ }, nil)
+	rec, handlerCalled := serveRateLimited(t, limiter, func(d string) { decisions = append(decisions, d) }, nil)
 
 	if !handlerCalled {
 		t.Fatal("request was blocked on limiter error, want fail-open")
@@ -119,8 +119,8 @@ func TestRateLimitErrorFailsOpen(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rec.Code)
 	}
-	if failOpens != 1 {
-		t.Errorf("fail-open counter = %d, want 1", failOpens)
+	if len(decisions) != 1 || decisions[0] != "failopen" {
+		t.Errorf("decisions = %v, want [failopen]", decisions)
 	}
 	if rec.Header().Get("X-RateLimit-Limit") != "" {
 		t.Error("rate limit headers set on fail-open, want none")

@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/cnashn/gateway/internal/config"
+	"github.com/cnashn/gateway/internal/observability"
 	"github.com/cnashn/gateway/internal/proxy"
 	"github.com/cnashn/gateway/internal/ratelimit"
 )
@@ -39,6 +40,8 @@ func main() {
 	redisClient := redis.NewClient(redisOpts)
 	defer redisClient.Close()
 
+	metrics := observability.NewMetrics()
+
 	limits := make(map[string]ratelimit.Limit, len(cfg.Routes))
 	for _, rt := range cfg.Routes {
 		limits[rt.PathPrefix] = ratelimit.Limit{
@@ -46,9 +49,10 @@ func main() {
 			Burst: rt.RateLimit.Burst,
 		}
 	}
-	limiter := ratelimit.NewRedisLimiter(redisClient, limits)
+	limiter := ratelimit.NewRedisLimiter(redisClient, limits,
+		ratelimit.WithOpObserver(metrics.ObserveRedisOp))
 
-	mux, err := proxy.New(cfg, logger, limiter)
+	mux, err := proxy.New(cfg, logger, limiter, metrics)
 	if err != nil {
 		logger.Error("failed to build proxy", "error", err)
 		os.Exit(1)
@@ -63,7 +67,20 @@ func main() {
 		Handler: mux,
 	}
 
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("GET /metrics", metrics.Handler())
+	metricsServer := &http.Server{
+		Addr:    cfg.MetricsListen,
+		Handler: metricsMux,
+	}
+
 	errCh := make(chan error, 1)
+	go func() {
+		logger.Info("metrics listening", "addr", cfg.MetricsListen)
+		if err := metricsServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
 	go func() {
 		logger.Info("gateway listening", "addr", cfg.Listen)
 		errCh <- server.ListenAndServe()
@@ -82,6 +99,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	_ = metricsServer.Shutdown(ctx)
 	if err := server.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		logger.Error("graceful shutdown failed", "error", err)
 		os.Exit(1)

@@ -73,15 +73,28 @@ type RedisLimiter struct {
 	limits map[string]Limit
 	// redis.Script invokes via EVALSHA and reloads the script on NOSCRIPT
 	// (e.g. after a Redis restart or failover flushes the script cache).
-	script *redis.Script
+	script    *redis.Script
+	observeOp func(time.Duration)
 }
 
-func NewRedisLimiter(client redis.UniversalClient, limits map[string]Limit) *RedisLimiter {
-	return &RedisLimiter{
+type Option func(*RedisLimiter)
+
+// WithOpObserver reports each Redis script call's latency, so the metrics
+// layer can watch limiter overhead without this package importing prometheus.
+func WithOpObserver(fn func(time.Duration)) Option {
+	return func(l *RedisLimiter) { l.observeOp = fn }
+}
+
+func NewRedisLimiter(client redis.UniversalClient, limits map[string]Limit, opts ...Option) *RedisLimiter {
+	l := &RedisLimiter{
 		client: client,
 		limits: limits,
 		script: redis.NewScript(tokenBucketScript),
 	}
+	for _, opt := range opts {
+		opt(l)
+	}
+	return l
 }
 
 func (l *RedisLimiter) Allow(ctx context.Context, route, key string) (Decision, error) {
@@ -94,10 +107,14 @@ func (l *RedisLimiter) Allow(ctx context.Context, route, key string) (Decision, 
 	// churning keys for clients that pause briefly between bursts.
 	ttl := time.Duration(float64(limit.Burst)/limit.Rate)*time.Second + time.Minute
 
+	start := time.Now()
 	res, err := l.script.Run(ctx, l.client,
 		[]string{"ratelimit:" + route + ":" + key},
 		limit.Rate, limit.Burst, ttl.Milliseconds(),
 	).Int64Slice()
+	if l.observeOp != nil {
+		l.observeOp(time.Since(start))
+	}
 	if err != nil {
 		return Decision{}, fmt.Errorf("rate limit script: %w", err)
 	}

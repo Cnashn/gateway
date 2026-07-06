@@ -13,12 +13,15 @@ import (
 )
 
 type Config struct {
-	Listen    string     `yaml:"listen"`
-	RedisURL  string     `yaml:"redis_url"`
-	Upstreams []Upstream `yaml:"upstreams"`
-	Routes    []Route    `yaml:"routes"`
-	Breaker   Breaker    `yaml:"breaker"`
+	Listen        string     `yaml:"listen"`
+	MetricsListen string     `yaml:"metrics_listen"`
+	RedisURL      string     `yaml:"redis_url"`
+	Upstreams     []Upstream `yaml:"upstreams"`
+	Routes        []Route    `yaml:"routes"`
+	Breaker       Breaker    `yaml:"breaker"`
 }
+
+const defaultMetricsListen = ":9091"
 
 type Upstream struct {
 	Name    string        `yaml:"name"`
@@ -69,6 +72,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Breaker.WindowSize == 0 {
 		cfg.Breaker.WindowSize = defaultBreakerWindow
+	}
+	if cfg.MetricsListen == "" {
+		cfg.MetricsListen = defaultMetricsListen
 	}
 
 	if errs := cfg.validate(); len(errs) > 0 {
