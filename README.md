@@ -60,6 +60,18 @@ Grafana is at http://localhost:3000 (anonymous access, dashboard "API Gateway"),
 
 ![Grafana dashboard](docs/grafana.png)
 
+## Performance
+
+Local numbers from `make loadtest` (k6 against the docker compose stack on an M-series MacBook, so a smoke test of behavior under load, not a benchmark claim):
+
+| Scenario | Throughput | Outcome | p50 | p95 |
+|---|---|---|---|---|
+| Steady 8 rps, under the 10 rps limit | 8.0 req/s | 241 of 241 got 200 | 6.1 ms | 11.3 ms |
+| 20 VUs hammering a 5 rps route for 15s | 13,739 req/s | 206,020 got 429, 84 got 200 | 1.3 ms (429) | 2.3 ms (429) |
+| Upstream killed, 4 rps for 30s | 4.0 req/s | 5 got 502, then 116 got 503 | 4.5 ms (503) | 8.7 ms (503) |
+
+Three things worth noting. The 200s during the burst came through at 5.6/s, which is the 5 token/s refill rate doing its job. A 429 costs about 1.3 ms at the median, which is the full limiter path including the Redis round trip, so that is roughly what the rate limiter adds to p95 on an allowed request too. And once the breaker opened, a failed request went from 10.5 ms (attempting the dead upstream) to 4.5 ms (short-circuit), while the upstream stopped receiving traffic entirely after the first 5 failures.
+
 ## Tests
 
 ```sh
