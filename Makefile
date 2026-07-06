@@ -1,4 +1,4 @@
-.PHONY: build run test lint docker-up docker-down
+.PHONY: build run test test-unit lint docker-up docker-down
 
 build:
 	go build -o bin/gateway ./cmd/gateway
@@ -8,6 +8,9 @@ run:
 
 test:
 	go test ./...
+
+test-unit:
+	go test -short ./...
 
 lint:
 	go vet ./...

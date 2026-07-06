@@ -64,7 +64,7 @@ func gatewayConfig(ordersURL, usersURL string, timeout time.Duration) *config.Co
 
 func newGateway(t *testing.T, cfg *config.Config, logger *slog.Logger) *httptest.Server {
 	t.Helper()
-	mux, err := proxy.New(cfg, logger)
+	mux, err := proxy.New(cfg, logger, nil)
 	if err != nil {
 		t.Fatalf("proxy.New() error = %v", err)
 	}

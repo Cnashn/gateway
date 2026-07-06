@@ -11,8 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/cnashn/gateway/internal/config"
 	"github.com/cnashn/gateway/internal/proxy"
+	"github.com/cnashn/gateway/internal/ratelimit"
 )
 
 func main() {
@@ -28,7 +31,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	mux, err := proxy.New(cfg, logger)
+	redisOpts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		logger.Error("invalid redis url", "error", err)
+		os.Exit(1)
+	}
+	redisClient := redis.NewClient(redisOpts)
+	defer redisClient.Close()
+
+	limits := make(map[string]ratelimit.Limit, len(cfg.Routes))
+	for _, rt := range cfg.Routes {
+		limits[rt.PathPrefix] = ratelimit.Limit{
+			Rate:  rt.RateLimit.RequestsPerSecond,
+			Burst: rt.RateLimit.Burst,
+		}
+	}
+	limiter := ratelimit.NewRedisLimiter(redisClient, limits)
+
+	mux, err := proxy.New(cfg, logger, limiter)
 	if err != nil {
 		logger.Error("failed to build proxy", "error", err)
 		os.Exit(1)

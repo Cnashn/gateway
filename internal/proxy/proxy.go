@@ -8,10 +8,18 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/cnashn/gateway/internal/config"
+	"github.com/cnashn/gateway/internal/ratelimit"
 )
+
+// failOpenTotal counts rate-limiter fail-open events until Step 5 replaces
+// it with a Prometheus counter.
+var failOpenTotal atomic.Int64
+
+func FailOpenTotal() int64 { return failOpenTotal.Load() }
 
 // New builds the routing mux. Each route serves its upstream through the
 // middleware chain, outermost first:
@@ -22,7 +30,7 @@ import (
 // request-id runs before logging so every log line carries an id; ratelimit
 // rejects before the breaker so denied requests never count against upstream
 // health.
-func New(cfg *config.Config, logger *slog.Logger) (*http.ServeMux, error) {
+func New(cfg *config.Config, logger *slog.Logger, limiter ratelimit.Limiter) (*http.ServeMux, error) {
 	upstreams := make(map[string]config.Upstream, len(cfg.Upstreams))
 	for _, u := range cfg.Upstreams {
 		upstreams[u.Name] = u
@@ -40,7 +48,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*http.ServeMux, error) {
 			Recovery(logger),
 			RequestID(),
 			Logging(logger, route.PathPrefix, u.Name),
-			RateLimit(nil),
+			RateLimit(limiter, route.PathPrefix, logger, func() { failOpenTotal.Add(1) }),
 			CircuitBreak(nil),
 		)
 		mux.Handle(route.PathPrefix, handler)

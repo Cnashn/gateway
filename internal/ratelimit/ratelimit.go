@@ -1,5 +1,5 @@
-// Package ratelimit will contain the Redis-backed token bucket rate limiter.
-// For now it only defines the interface the proxy middleware depends on.
+// Package ratelimit implements a Redis-backed token bucket rate limiter,
+// atomic via a Lua script.
 package ratelimit
 
 import (
