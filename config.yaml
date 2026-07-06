@@ -4,8 +4,10 @@ redis_url: "redis://redis:6379"
 upstreams:
   - name: orders
     url: "http://orders:8081"
+    timeout: 5s
   - name: users
     url: "http://users:8082"
+    timeout: 5s
 
 routes:
   - path_prefix: /api/orders/

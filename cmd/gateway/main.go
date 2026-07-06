@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cnashn/gateway/internal/config"
+	"github.com/cnashn/gateway/internal/proxy"
 )
 
 func main() {
@@ -27,7 +28,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	mux := http.NewServeMux()
+	mux, err := proxy.New(cfg, logger)
+	if err != nil {
+		logger.Error("failed to build proxy", "error", err)
+		os.Exit(1)
+	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))

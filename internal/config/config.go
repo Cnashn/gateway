@@ -21,9 +21,12 @@ type Config struct {
 }
 
 type Upstream struct {
-	Name string `yaml:"name"`
-	URL  string `yaml:"url"`
+	Name    string        `yaml:"name"`
+	URL     string        `yaml:"url"`
+	Timeout time.Duration `yaml:"timeout"`
 }
+
+const defaultUpstreamTimeout = 10 * time.Second
 
 type Route struct {
 	PathPrefix string    `yaml:"path_prefix"`
@@ -56,6 +59,11 @@ func Load(path string) (*Config, error) {
 	}
 
 	applyEnvOverrides(&cfg)
+	for i := range cfg.Upstreams {
+		if cfg.Upstreams[i].Timeout == 0 {
+			cfg.Upstreams[i].Timeout = defaultUpstreamTimeout
+		}
+	}
 
 	if errs := cfg.validate(); len(errs) > 0 {
 		return nil, fmt.Errorf("invalid config:\n  - %s", strings.Join(errs, "\n  - "))
@@ -98,6 +106,10 @@ func (c *Config) validate() []string {
 			errs = append(errs, fmt.Sprintf("upstreams[%d].url: must not be empty", i))
 		} else if parsed, err := url.Parse(u.URL); err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			errs = append(errs, fmt.Sprintf("upstreams[%d].url: %q is not a valid absolute URL", i, u.URL))
+		}
+
+		if u.Timeout < 0 {
+			errs = append(errs, fmt.Sprintf("upstreams[%d].timeout: must not be negative", i))
 		}
 	}
 

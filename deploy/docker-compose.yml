@@ -13,6 +13,18 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      orders:
+        condition: service_started
+      users:
+        condition: service_started
+
+  orders:
+    image: hashicorp/http-echo:1.0
+    command: ["-listen=:8081", "-text=orders ok"]
+
+  users:
+    image: hashicorp/http-echo:1.0
+    command: ["-listen=:8082", "-text=users ok"]
 
   redis:
     image: redis:7-alpine

@@ -14,6 +14,7 @@ redis_url: "redis://localhost:6379"
 upstreams:
   - name: orders
     url: "http://orders:8081"
+    timeout: 5s
   - name: users
     url: "http://users:8082"
 routes:
@@ -59,6 +60,12 @@ func TestLoadValid(t *testing.T) {
 	}
 	if cfg.Upstreams[0].Name != "orders" || cfg.Upstreams[0].URL != "http://orders:8081" {
 		t.Errorf("Upstreams[0] = %+v", cfg.Upstreams[0])
+	}
+	if cfg.Upstreams[0].Timeout != 5*time.Second {
+		t.Errorf("Upstreams[0].Timeout = %v, want 5s", cfg.Upstreams[0].Timeout)
+	}
+	if cfg.Upstreams[1].Timeout != 10*time.Second {
+		t.Errorf("Upstreams[1].Timeout = %v, want 10s default", cfg.Upstreams[1].Timeout)
 	}
 	if len(cfg.Routes) != 2 {
 		t.Fatalf("len(Routes) = %d, want 2", len(cfg.Routes))
