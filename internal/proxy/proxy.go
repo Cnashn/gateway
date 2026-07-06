@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cnashn/gateway/internal/breaker"
 	"github.com/cnashn/gateway/internal/config"
 	"github.com/cnashn/gateway/internal/ratelimit"
 )
@@ -32,8 +33,15 @@ func FailOpenTotal() int64 { return failOpenTotal.Load() }
 // health.
 func New(cfg *config.Config, logger *slog.Logger, limiter ratelimit.Limiter) (*http.ServeMux, error) {
 	upstreams := make(map[string]config.Upstream, len(cfg.Upstreams))
+	breakers := make(map[string]*breaker.CircuitBreaker, len(cfg.Upstreams))
 	for _, u := range cfg.Upstreams {
 		upstreams[u.Name] = u
+		breakers[u.Name] = breaker.New(u.Name, breaker.Config{
+			FailureThreshold:    cfg.Breaker.FailureThreshold,
+			WindowSize:          cfg.Breaker.WindowSize,
+			OpenDuration:        cfg.Breaker.OpenDuration,
+			HalfOpenMaxRequests: cfg.Breaker.HalfOpenMaxRequests,
+		}, breaker.WithLogger(logger))
 	}
 
 	mux := http.NewServeMux()
@@ -49,7 +57,7 @@ func New(cfg *config.Config, logger *slog.Logger, limiter ratelimit.Limiter) (*h
 			RequestID(),
 			Logging(logger, route.PathPrefix, u.Name),
 			RateLimit(limiter, route.PathPrefix, logger, func() { failOpenTotal.Add(1) }),
-			CircuitBreak(nil),
+			CircuitBreak(breakers[route.Upstream], u.Name),
 		)
 		mux.Handle(route.PathPrefix, handler)
 	}

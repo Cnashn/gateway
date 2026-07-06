@@ -41,9 +41,12 @@ type RateLimit struct {
 
 type Breaker struct {
 	FailureThreshold    float64       `yaml:"failure_threshold"`
+	WindowSize          int           `yaml:"window_size"`
 	OpenDuration        time.Duration `yaml:"open_duration"`
 	HalfOpenMaxRequests int           `yaml:"half_open_max_requests"`
 }
+
+const defaultBreakerWindow = 20
 
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
@@ -63,6 +66,9 @@ func Load(path string) (*Config, error) {
 		if cfg.Upstreams[i].Timeout == 0 {
 			cfg.Upstreams[i].Timeout = defaultUpstreamTimeout
 		}
+	}
+	if cfg.Breaker.WindowSize == 0 {
+		cfg.Breaker.WindowSize = defaultBreakerWindow
 	}
 
 	if errs := cfg.validate(); len(errs) > 0 {
@@ -143,6 +149,9 @@ func (c *Config) validate() []string {
 
 	if c.Breaker.FailureThreshold <= 0 || c.Breaker.FailureThreshold > 1 {
 		errs = append(errs, "breaker.failure_threshold: must be in (0, 1]")
+	}
+	if c.Breaker.WindowSize <= 0 {
+		errs = append(errs, "breaker.window_size: must be greater than 0")
 	}
 	if c.Breaker.OpenDuration <= 0 {
 		errs = append(errs, "breaker.open_duration: must be greater than 0")

@@ -23,5 +23,6 @@ routes:
 
 breaker:
   failure_threshold: 0.5
+  window_size: 10
   open_duration: 30s
   half_open_max_requests: 3

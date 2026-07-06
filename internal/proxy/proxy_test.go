@@ -58,7 +58,7 @@ func gatewayConfig(ordersURL, usersURL string, timeout time.Duration) *config.Co
 			{PathPrefix: "/api/orders/", Upstream: "orders", RateLimit: config.RateLimit{RequestsPerSecond: 5, Burst: 10}},
 			{PathPrefix: "/api/users/", Upstream: "users", RateLimit: config.RateLimit{RequestsPerSecond: 5, Burst: 10}},
 		},
-		Breaker: config.Breaker{FailureThreshold: 0.5, OpenDuration: 30 * time.Second, HalfOpenMaxRequests: 3},
+		Breaker: config.Breaker{FailureThreshold: 0.5, WindowSize: 100, OpenDuration: 30 * time.Second, HalfOpenMaxRequests: 3},
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -150,11 +151,34 @@ func ceilSeconds(d time.Duration) int {
 	return s
 }
 
-// CircuitBreak is a pass-through slot in the chain until Step 4 implements
-// the breaker.Breaker it will consult.
-func CircuitBreak(_ breaker.Breaker) Middleware {
+// CircuitBreak short-circuits requests to an unhealthy upstream with 503.
+// A failure is a transport error, timeout, or 5xx from the upstream (the
+// gateway's own 502 covers the first two); 4xx is the client's fault, not
+// the upstream's, so it never trips the breaker.
+func CircuitBreak(b breaker.Breaker, upstream string) Middleware {
 	return func(next http.Handler) http.Handler {
-		return next
+		if b == nil {
+			return next
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			done, err := b.Allow()
+			if err != nil {
+				var oe *breaker.OpenError
+				if errors.As(err, &oe) && oe.RetryAfter > 0 {
+					w.Header().Set("Retry-After", strconv.Itoa(ceilSeconds(oe.RetryAfter)))
+				}
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+					"error":      "upstream_unavailable",
+					"upstream":   upstream,
+					"request_id": r.Header.Get("X-Request-Id"),
+				})
+				return
+			}
+
+			rec := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
+			defer func() { done(rec.status < 500) }()
+			next.ServeHTTP(rec, r)
+		})
 	}
 }
 
@@ -204,10 +228,14 @@ func (r *responseRecorder) Flush() {
 }
 
 func writeJSONError(w http.ResponseWriter, status int, code, requestID string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, status, map[string]string{
 		"error":      code,
 		"request_id": requestID,
 	})
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload map[string]string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
 }
