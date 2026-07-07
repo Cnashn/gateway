@@ -3,6 +3,10 @@ services:
     name: gateway
     runtime: docker
     plan: free
+    # Match the Upstash Redis region (us-east-1): every request makes one
+    # Redis round trip for the rate-limit check, so a cross-region gateway
+    # would add tens of ms to every allowed request.
+    region: virginia
     healthCheckPath: /healthz
     envVars:
       # Upstash rediss:// URL, set in the Render dashboard, never committed.
