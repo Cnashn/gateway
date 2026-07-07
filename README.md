@@ -60,16 +60,16 @@ Grafana is at http://localhost:3000 (anonymous access, dashboard "API Gateway"),
 
 ## Live demo
 
-A free-tier instance runs on Render with Upstash Redis: `https://LIVE-URL-PLACEHOLDER.onrender.com` (free tier sleeps when idle, so the first request can take up to a minute).
+A free-tier instance runs on Render with Upstash Redis: `https://gateway-ntkq.onrender.com` (free tier sleeps when idle, so the first request can take up to a minute).
 
 ```sh
-curl -i https://LIVE-URL-PLACEHOLDER.onrender.com/api/orders/
+curl -i https://gateway-ntkq.onrender.com/api/orders/
 ```
 
-Trigger a 429 by exhausting the orders burst:
+Trigger a 429 by exhausting the orders burst. Fire the requests concurrently, since over a round trip to the server a sequential loop refills faster than it drains:
 
 ```sh
-for i in $(seq 1 14); do curl -s -o /dev/null -w "%{http_code} " https://LIVE-URL-PLACEHOLDER.onrender.com/api/orders/; done
+seq 1 40 | xargs -P 40 -I{} curl -s -o /dev/null -w "%{http_code}\n" https://gateway-ntkq.onrender.com/api/orders/ | sort | uniq -c
 ```
 
 The deployed instance runs with `GATEWAY_DEMO=true`, which serves two built-in echo handlers on loopback ports and points the configured upstreams at them. This mode exists only so the single-service free deploy has something to proxy; locally the compose stack uses real separate upstream containers.
@@ -99,4 +99,4 @@ Unit tests cover config validation, middleware behavior with fakes, and the brea
 
 ## Configuration
 
-`config.yaml` defines the listen addresses, upstreams (with per-upstream timeouts) and routes (with per-route rate limits). `GATEWAY_LISTEN`, `GATEWAY_REDIS_URL` and `GATEWAY_DEMO` override the file for deployment, and `PORT` (injected by platforms like Render) takes priority over both listen settings. Redis URLs may use `rediss://` for TLS (Upstash). Invalid config fails at startup with every problem listed, not just the first.
+`config.yaml` defines the listen addresses, upstreams (with per-upstream timeouts) and routes (with per-route rate limits). `GATEWAY_LISTEN`, `GATEWAY_REDIS_URL` and `GATEWAY_DEMO` override the file for deployment, and `PORT` (injected by platforms like Render) takes priority over both listen settings. `GATEWAY_METRICS_LISTEN=off` disables the separate metrics port, which single-port hosts like Render need. Redis URLs may use `rediss://` for TLS (Upstash). Invalid config fails at startup with every problem listed, not just the first.
