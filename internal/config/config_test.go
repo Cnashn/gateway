@@ -166,6 +166,33 @@ func TestEnvOverrides(t *testing.T) {
 	}
 }
 
+func TestMetricsListenOverride(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want string
+	}{
+		{name: "default when unset", env: "", want: ":9091"},
+		{name: "off disables", env: "off", want: ""},
+		{name: "off case-insensitive", env: "OFF", want: ""},
+		{name: "custom addr", env: "127.0.0.1:9099", want: "127.0.0.1:9099"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.env != "" {
+				t.Setenv("GATEWAY_METRICS_LISTEN", tt.env)
+			}
+			cfg, err := Load(writeConfig(t, validYAML))
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.MetricsListen != tt.want {
+				t.Errorf("MetricsListen = %q, want %q", cfg.MetricsListen, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoadInvalid(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -93,20 +93,27 @@ func main() {
 		Handler: mux,
 	}
 
-	metricsMux := http.NewServeMux()
-	metricsMux.Handle("GET /metrics", metrics.Handler())
-	metricsServer := &http.Server{
-		Addr:    cfg.MetricsListen,
-		Handler: metricsMux,
-	}
-
 	errCh := make(chan error, 1)
-	go func() {
-		logger.Info("metrics listening", "addr", cfg.MetricsListen)
-		if err := metricsServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
+
+	// The metrics endpoint lives on its own port for Prometheus to scrape in
+	// the compose stack. Single-service hosts like Render expect exactly one
+	// open port and destabilize routing if they see a second, so the deploy
+	// sets GATEWAY_METRICS_LISTEN=off to skip it.
+	var metricsServer *http.Server
+	if cfg.MetricsListen != "" {
+		metricsMux := http.NewServeMux()
+		metricsMux.Handle("GET /metrics", metrics.Handler())
+		metricsServer = &http.Server{
+			Addr:    cfg.MetricsListen,
+			Handler: metricsMux,
 		}
-	}()
+		go func() {
+			logger.Info("metrics listening", "addr", cfg.MetricsListen)
+			if err := metricsServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+				errCh <- err
+			}
+		}()
+	}
 	go func() {
 		logger.Info("gateway listening", "addr", cfg.Listen, "startup", time.Since(start).String())
 		errCh <- server.ListenAndServe()
@@ -125,7 +132,9 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_ = metricsServer.Shutdown(ctx)
+	if metricsServer != nil {
+		_ = metricsServer.Shutdown(ctx)
+	}
 	if err := server.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		logger.Error("graceful shutdown failed", "error", err)
 		os.Exit(1)

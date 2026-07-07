@@ -74,7 +74,11 @@ func Load(path string) (*Config, error) {
 	if cfg.Breaker.WindowSize == 0 {
 		cfg.Breaker.WindowSize = defaultBreakerWindow
 	}
-	if cfg.MetricsListen == "" {
+	// "off" disables the metrics server (empty listen addr); anything else
+	// empty falls back to the default port.
+	if strings.EqualFold(cfg.MetricsListen, "off") {
+		cfg.MetricsListen = ""
+	} else if cfg.MetricsListen == "" {
 		cfg.MetricsListen = defaultMetricsListen
 	}
 
@@ -93,6 +97,9 @@ func applyEnvOverrides(cfg *Config) {
 	// service deploys but never receives a request.
 	if v := os.Getenv("PORT"); v != "" {
 		cfg.Listen = ":" + v
+	}
+	if v := os.Getenv("GATEWAY_METRICS_LISTEN"); v != "" {
+		cfg.MetricsListen = v
 	}
 	if v := os.Getenv("GATEWAY_REDIS_URL"); v != "" {
 		cfg.RedisURL = v

@@ -16,3 +16,7 @@ services:
       # echo handlers instead. Render injects PORT for the listen address.
       - key: GATEWAY_DEMO
         value: "true"
+      # Render routes to exactly one port; a second open port (the metrics
+      # server) destabilizes routing, so disable it here.
+      - key: GATEWAY_METRICS_LISTEN
+        value: "off"
