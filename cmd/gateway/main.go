@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"log/slog"
@@ -86,6 +87,24 @@ func main() {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	// Landing page for the bare root ("/{$}" matches only "/", so unknown
+	// paths still 404). Lists the routes so a clicked link shows the gateway
+	// exists rather than a bare 404.
+	routePaths := make([]string, 0, len(cfg.Routes))
+	for _, rt := range cfg.Routes {
+		routePaths = append(routePaths, rt.PathPrefix)
+	}
+	index, _ := json.Marshal(map[string]any{
+		"service": "gateway",
+		"status":  "ok",
+		"routes":  routePaths,
+		"health":  "/healthz",
+	})
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(index)
 	})
 
 	server := &http.Server{
