@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: gateway
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      # Upstash rediss:// URL, set in the Render dashboard, never committed.
+      - key: GATEWAY_REDIS_URL
+        sync: false
+      # Single-service deploy has no real upstreams; serve the built-in
+      # echo handlers instead. Render injects PORT for the listen address.
+      - key: GATEWAY_DEMO
+        value: "true"

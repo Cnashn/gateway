@@ -20,6 +20,7 @@ import (
 )
 
 func main() {
+	start := time.Now()
 	configPath := flag.String("config", "config.yaml", "path to config file")
 	flag.Parse()
 
@@ -32,6 +33,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	if cfg.Demo {
+		if err := startDemoUpstreams(cfg, logger); err != nil {
+			logger.Error("failed to start demo upstreams", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	// ParseURL handles rediss:// (Upstash) and sets up TLS from the URL.
 	redisOpts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
 		logger.Error("invalid redis url", "error", err)
@@ -39,6 +48,23 @@ func main() {
 	}
 	redisClient := redis.NewClient(redisOpts)
 	defer redisClient.Close()
+
+	// go-redis dials lazily on first use, so a cold or slow Redis never
+	// blocks startup or /healthz. This warm-up ping just reports when the
+	// connection is actually usable; the limiter fails open until then.
+	go func() {
+		for attempt := 1; ; attempt++ {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := redisClient.Ping(ctx).Err()
+			cancel()
+			if err == nil {
+				logger.Info("redis reachable", "attempt", attempt, "since_start", time.Since(start).String())
+				return
+			}
+			logger.Warn("redis not reachable yet", "attempt", attempt, "error", err)
+			time.Sleep(min(time.Duration(attempt)*time.Second, 10*time.Second))
+		}
+	}()
 
 	metrics := observability.NewMetrics()
 
@@ -82,7 +108,7 @@ func main() {
 		}
 	}()
 	go func() {
-		logger.Info("gateway listening", "addr", cfg.Listen)
+		logger.Info("gateway listening", "addr", cfg.Listen, "startup", time.Since(start).String())
 		errCh <- server.ListenAndServe()
 	}()
 

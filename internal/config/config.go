@@ -16,6 +16,7 @@ type Config struct {
 	Listen        string     `yaml:"listen"`
 	MetricsListen string     `yaml:"metrics_listen"`
 	RedisURL      string     `yaml:"redis_url"`
+	Demo          bool       `yaml:"demo"`
 	Upstreams     []Upstream `yaml:"upstreams"`
 	Routes        []Route    `yaml:"routes"`
 	Breaker       Breaker    `yaml:"breaker"`
@@ -87,8 +88,17 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("GATEWAY_LISTEN"); v != "" {
 		cfg.Listen = v
 	}
+	// PORT wins over GATEWAY_LISTEN: platforms like Render inject it and
+	// route traffic only to that port, so obeying anything else means the
+	// service deploys but never receives a request.
+	if v := os.Getenv("PORT"); v != "" {
+		cfg.Listen = ":" + v
+	}
 	if v := os.Getenv("GATEWAY_REDIS_URL"); v != "" {
 		cfg.RedisURL = v
+	}
+	if v := os.Getenv("GATEWAY_DEMO"); v != "" {
+		cfg.Demo = v == "1" || strings.EqualFold(v, "true")
 	}
 }
 

@@ -85,6 +85,7 @@ func TestEnvOverrides(t *testing.T) {
 		env        map[string]string
 		wantListen string
 		wantRedis  string
+		wantDemo   bool
 	}{
 		{
 			name:       "no overrides",
@@ -113,6 +114,34 @@ func TestEnvOverrides(t *testing.T) {
 			wantListen: ":7777",
 			wantRedis:  "rediss://upstash:6379",
 		},
+		{
+			name:       "port override",
+			env:        map[string]string{"PORT": "10000"},
+			wantListen: ":10000",
+			wantRedis:  "redis://localhost:6379",
+		},
+		{
+			name: "port beats gateway_listen",
+			env: map[string]string{
+				"GATEWAY_LISTEN": ":7777",
+				"PORT":           "10000",
+			},
+			wantListen: ":10000",
+			wantRedis:  "redis://localhost:6379",
+		},
+		{
+			name:       "demo enabled",
+			env:        map[string]string{"GATEWAY_DEMO": "true"},
+			wantListen: ":8080",
+			wantRedis:  "redis://localhost:6379",
+			wantDemo:   true,
+		},
+		{
+			name:       "demo disabled by unrecognized value",
+			env:        map[string]string{"GATEWAY_DEMO": "0"},
+			wantListen: ":8080",
+			wantRedis:  "redis://localhost:6379",
+		},
 	}
 
 	for _, tt := range tests {
@@ -129,6 +158,9 @@ func TestEnvOverrides(t *testing.T) {
 			}
 			if cfg.RedisURL != tt.wantRedis {
 				t.Errorf("RedisURL = %q, want %q", cfg.RedisURL, tt.wantRedis)
+			}
+			if cfg.Demo != tt.wantDemo {
+				t.Errorf("Demo = %v, want %v", cfg.Demo, tt.wantDemo)
 			}
 		})
 	}

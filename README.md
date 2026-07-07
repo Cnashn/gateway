@@ -58,6 +58,22 @@ make demo-breaker
 
 Grafana is at http://localhost:3000 (anonymous access, dashboard "API Gateway"), Prometheus at http://localhost:9090.
 
+## Live demo
+
+A free-tier instance runs on Render with Upstash Redis: `https://LIVE-URL-PLACEHOLDER.onrender.com` (free tier sleeps when idle, so the first request can take up to a minute).
+
+```sh
+curl -i https://LIVE-URL-PLACEHOLDER.onrender.com/api/orders/
+```
+
+Trigger a 429 by exhausting the orders burst:
+
+```sh
+for i in $(seq 1 14); do curl -s -o /dev/null -w "%{http_code} " https://LIVE-URL-PLACEHOLDER.onrender.com/api/orders/; done
+```
+
+The deployed instance runs with `GATEWAY_DEMO=true`, which serves two built-in echo handlers on loopback ports and points the configured upstreams at them. This mode exists only so the single-service free deploy has something to proxy; locally the compose stack uses real separate upstream containers.
+
 ![Grafana dashboard](docs/grafana.png)
 
 ## Performance
@@ -83,4 +99,4 @@ Unit tests cover config validation, middleware behavior with fakes, and the brea
 
 ## Configuration
 
-`config.yaml` defines the listen addresses, upstreams (with per-upstream timeouts) and routes (with per-route rate limits). `GATEWAY_LISTEN` and `GATEWAY_REDIS_URL` override the file for deployment. Invalid config fails at startup with every problem listed, not just the first.
+`config.yaml` defines the listen addresses, upstreams (with per-upstream timeouts) and routes (with per-route rate limits). `GATEWAY_LISTEN`, `GATEWAY_REDIS_URL` and `GATEWAY_DEMO` override the file for deployment, and `PORT` (injected by platforms like Render) takes priority over both listen settings. Redis URLs may use `rediss://` for TLS (Upstash). Invalid config fails at startup with every problem listed, not just the first.
