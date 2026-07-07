@@ -9,3 +9,4 @@ FROM gcr.io/distroless/static:nonroot
 COPY --from=build /gateway /gateway
 COPY --from=build /src/config.yaml /config.yaml
 ENTRYPOINT ["/gateway"]
+CMD ["-config", "/config.yaml"]
